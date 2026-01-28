@@ -280,7 +280,19 @@ enum class PerimeterGeneratorType
     Classic,
     // Perimeter generator with variable extrusion width based on the paper
     // "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling" ported from Cura.
-    Arachne
+    Arachne,
+    // Athena produces precise perimeters with exact user-specified widths
+    // for maximum dimensional accuracy (from preFlight)
+    Athena
+};
+
+// preFlight: Interlocking flow detection precision
+enum InterlockFlowDetection
+{
+    ifdPrecise,  // 1mm sampling - highest accuracy, more CPU
+    ifdStandard, // 2mm sampling - good balance
+    ifdRelaxed,  // 4mm sampling - faster, less precise at boundaries
+    ifdMinimal,  // 8mm sampling - fastest, least precise
 };
 
 // BBS
