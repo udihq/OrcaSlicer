@@ -6809,6 +6809,25 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<PerimeterGeneratorType>(PerimeterGeneratorType::Arachne));
 
+    def = this->add("perimeter_compression", coEnum);
+    def->label = L("Perimeter compression");
+    def->category = L("Quality");
+    def->tooltip = L("Controls how aggressively perimeters compress in tight areas where loops converge. "
+                     "This setting only applies to the Athena perimeter generator.\n\n"
+                     "• Disabled: No compression (100% of bead width minimum)\n"
+                     "• Moderate: 66% of bead width minimum\n"
+                     "• Aggressive: 33% of bead width minimum\n\n"
+                     "The floor is always 33% of nozzle diameter to ensure printability.");
+    def->enum_keys_map = &ConfigOptionEnum<PerimeterCompression>::get_enum_values();
+    def->enum_values.push_back("off");
+    def->enum_values.push_back("moderate");
+    def->enum_values.push_back("aggressive");
+    def->enum_labels.push_back(L("Disabled"));
+    def->enum_labels.push_back(L("Moderate"));
+    def->enum_labels.push_back(L("Aggressive"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<PerimeterCompression>(PerimeterCompression::pcModerate));
+
     def = this->add("wall_transition_length", coPercent);
     def->label = L("Wall transition length");
     def->category = L("Quality");
