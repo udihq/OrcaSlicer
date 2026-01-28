@@ -2554,4 +2554,15 @@ std::vector<Polygons> PerimeterGenerator::generate_lower_polygons_series(float w
     return lower_polygons_series;
 }
 
+// preFlight: Athena wall generator (precise fixed-width walls)
+// TODO: Full implementation - currently falls back to Classic for compatibility
+void PerimeterGenerator::process_athena()
+{
+    // Athena provides precise, dimensionally-accurate perimeters with exact user-specified widths
+    // Full implementation requires integration of Athena::WallToolPaths and helper utilities
+    // For now, fall back to classic perimeter generation to maintain functionality
+    BOOST_LOG_TRIVIAL(warning) << "Athena wall generator selected but not fully implemented yet - using Classic";
+    process_classic();
+}
+
 }
