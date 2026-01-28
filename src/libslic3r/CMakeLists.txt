@@ -371,6 +371,8 @@ set(lisbslic3r_sources
     Platform.hpp
     PNGReadWrite.cpp
     PNGReadWrite.hpp
+    PreciseWalls.cpp
+    PreciseWalls.hpp
     Point.cpp
     Point.hpp
     Polygon.cpp

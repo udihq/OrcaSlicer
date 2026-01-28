@@ -59,6 +59,69 @@ template<> struct hash<Slic3r::FuzzySkinConfig>
 
 namespace Slic3r {
 
+// Forward declarations
+class Layer;
+struct PerimeterRegions;
+
+}
+
+// Namespace for parametric perimeter generation functions (Athena, refactored Arachne)
+namespace Slic3r::PerimeterGenerator
+{
+
+struct Parameters
+{
+    Parameters(double layer_height, int layer_id, const Layer *layer, Flow perimeter_flow, Flow ext_perimeter_flow,
+               Flow overhang_flow, Flow solid_infill_flow, const PrintRegionConfig &config,
+               const PrintObjectConfig &object_config, const PrintConfig &print_config,
+               const PerimeterRegions &perimeter_regions, const bool spiral_vase)
+        : layer_height(layer_height)
+        , layer_id(layer_id)
+        , layer(layer)
+        , perimeter_flow(perimeter_flow)
+        , ext_perimeter_flow(ext_perimeter_flow)
+        , overhang_flow(overhang_flow)
+        , solid_infill_flow(solid_infill_flow)
+        , config(config)
+        , object_config(object_config)
+        , print_config(print_config)
+        , perimeter_regions(perimeter_regions)
+        , spiral_vase(spiral_vase)
+        , scaled_resolution(scaled<double>(print_config.gcode_resolution.value))
+        , mm3_per_mm(perimeter_flow.mm3_per_mm())
+        , ext_mm3_per_mm(ext_perimeter_flow.mm3_per_mm())
+        , mm3_per_mm_overhang(overhang_flow.mm3_per_mm())
+    {
+    }
+
+    // Input parameters
+    double layer_height;
+    int layer_id;
+    const Layer *layer;
+    Flow perimeter_flow;
+    Flow ext_perimeter_flow;
+    Flow overhang_flow;
+    Flow solid_infill_flow;
+    const PrintRegionConfig &config;
+    const PrintObjectConfig &object_config;
+    const PrintConfig &print_config;
+    const PerimeterRegions &perimeter_regions;
+
+    // Derived parameters
+    bool spiral_vase;
+    double scaled_resolution;
+    double ext_mm3_per_mm;
+    double mm3_per_mm;
+    double mm3_per_mm_overhang;
+
+private:
+    Parameters() = delete;
+};
+
+} // namespace Slic3r::PerimeterGenerator
+
+namespace Slic3r {
+
 class PerimeterGenerator {
 public:
     // Inputs:
