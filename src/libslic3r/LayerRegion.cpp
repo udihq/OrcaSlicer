@@ -119,6 +119,8 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
 
     if (this->layer()->object()->config().wall_generator.value == PerimeterGeneratorType::Arachne && !spiral_mode)
         g.process_arachne();
+    else if (this->layer()->object()->config().wall_generator.value == PerimeterGeneratorType::Athena)
+        g.process_athena();
     else
         g.process_classic();
 }

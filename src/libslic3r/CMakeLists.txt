@@ -69,6 +69,46 @@ set(lisbslic3r_sources
     Arachne/utils/SquareGrid.hpp
     Arachne/WallToolPaths.cpp
     Arachne/WallToolPaths.hpp
+    Athena/BeadingStrategy/BeadingStrategy.cpp
+    Athena/BeadingStrategy/BeadingStrategyFactory.cpp
+    Athena/BeadingStrategy/BeadingStrategyFactory.hpp
+    Athena/BeadingStrategy/BeadingStrategy.hpp
+    Athena/BeadingStrategy/DistributedBeadingStrategy.cpp
+    Athena/BeadingStrategy/DistributedBeadingStrategy.hpp
+    Athena/BeadingStrategy/LimitedBeadingStrategy.cpp
+    Athena/BeadingStrategy/LimitedBeadingStrategy.hpp
+    Athena/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp
+    Athena/BeadingStrategy/OuterWallInsetBeadingStrategy.hpp
+    Athena/BeadingStrategy/RedistributeBeadingStrategy.cpp
+    Athena/BeadingStrategy/RedistributeBeadingStrategy.hpp
+    Athena/BeadingStrategy/WideningBeadingStrategy.cpp
+    Athena/BeadingStrategy/WideningBeadingStrategy.hpp
+    Athena/PerimeterOrder.cpp
+    Athena/PerimeterOrder.hpp
+    Athena/SkeletalTrapezoidation.cpp
+    Athena/SkeletalTrapezoidationEdge.hpp
+    Athena/SkeletalTrapezoidationGraph.cpp
+    Athena/SkeletalTrapezoidationGraph.hpp
+    Athena/SkeletalTrapezoidation.hpp
+    Athena/SkeletalTrapezoidationJoint.hpp
+    Athena/utils/ExtrusionJunction.hpp
+    Athena/utils/ExtrusionLine.cpp
+    Athena/utils/ExtrusionLine.hpp
+    Athena/utils/HalfEdgeGraph.hpp
+    Athena/utils/HalfEdge.hpp
+    Athena/utils/HalfEdgeNode.hpp
+    Athena/utils/linearAlg2D.hpp
+    Athena/utils/PolygonsPointIndex.hpp
+    Athena/utils/PolygonsSegmentIndex.hpp
+    Athena/utils/PolylineStitcher.cpp
+    Athena/utils/PolylineStitcher.hpp
+    Athena/utils/SparseGrid.hpp
+    Athena/utils/SparseLineGrid.hpp
+    Athena/utils/SparsePointGrid.hpp
+    Athena/utils/SquareGrid.cpp
+    Athena/utils/SquareGrid.hpp
+    Athena/WallToolPaths.cpp
+    Athena/WallToolPaths.hpp
     ArcFitter.cpp
     ArcFitter.hpp
     Arrange.cpp
@@ -333,6 +373,8 @@ set(lisbslic3r_sources
     Platform.hpp
     PNGReadWrite.cpp
     PNGReadWrite.hpp
+    PreciseWalls.cpp
+    PreciseWalls.hpp
     Point.cpp
     Point.hpp
     Polygon.cpp
@@ -447,6 +489,8 @@ set(lisbslic3r_sources
     Time.hpp
     Timer.cpp
     Timer.hpp
+    TravelOptimization.cpp
+    TravelOptimization.hpp
     TriangleMesh.cpp
     TriangleMesh.hpp
     TriangleMeshDeal.cpp

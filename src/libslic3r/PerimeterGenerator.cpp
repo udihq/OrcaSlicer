@@ -9,6 +9,10 @@
 #include "ShortestPath.hpp"
 #include "VariableWidth.hpp"
 #include "Arachne/WallToolPaths.hpp"
+#include "Athena/WallToolPaths.hpp"
+#include "Athena/utils/ExtrusionLine.hpp"
+#include "Athena/PerimeterOrder.hpp"
+#include "PreciseWalls.hpp"
 #include "Geometry/ConvexHull.hpp"
 #include "ExPolygonCollection.hpp"
 #include "Geometry.hpp"
@@ -541,6 +545,303 @@ static ExtrusionEntityCollection traverse_extrusions(const PerimeterGenerator& p
                     multi_path.paths.emplace_back(std::move(*it_path));
                 }
 
+                extrusion_coll.append(ExtrusionMultiPath(std::move(multi_path)));
+            }
+        }
+    }
+
+    return extrusion_coll;
+}
+
+// Athena-specific version of traverse_extrusions
+// Handles Athena::PerimeterOrder::PerimeterExtrusions instead of Arachne extrusions
+static ExtrusionEntityCollection traverse_extrusions(const PerimeterGenerator::Parameters &params,
+                                                     const Polygons &lower_slices_polygons_cache,
+                                                     const Polygons &lower_slices_raw,
+                                                     Athena::PerimeterOrder::PerimeterExtrusions &pg_extrusions)
+{
+    using namespace Slic3r::Feature::FuzzySkin;
+
+    ExtrusionEntityCollection extrusion_coll;
+    for (Athena::PerimeterOrder::PerimeterExtrusion &pg_extrusion : pg_extrusions)
+    {
+        Athena::ExtrusionLine extrusion = pg_extrusion.extrusion;
+        if (extrusion.empty())
+            continue;
+
+        const bool is_external = extrusion.inset_idx == 0;
+        ExtrusionRole role_normal = is_external ? ExtrusionRole::ExternalPerimeter : ExtrusionRole::Perimeter;
+        ExtrusionRole role_overhang = role_normal | ExtrusionRoleModifier::Bridge;
+
+        // Visibility checks (fuzzy_skin_on_top, fuzzy_skin_first_layer) are now done per-segment
+        // inside apply_fuzzy_skin, using the segment's midpoint for accurate detection.
+        extrusion = apply_fuzzy_skin(extrusion, params.config, params.perimeter_regions, params.layer_id,
+                                     pg_extrusion.extrusion.inset_idx,
+                                     !pg_extrusion.extrusion.is_closed || pg_extrusion.is_contour(), params.layer,
+                                     &lower_slices_raw, params.ext_perimeter_flow.scaled_width());
+
+        // This prevents the artificial split at the "3 o'clock" position by ensuring the first
+        // junction is at the rear of the object (minimum Y), which is a common seam preference.
+        if (extrusion.is_closed && extrusion.junctions.size() > 2)
+        {
+            // Find junction with minimum Y (rear of object)
+            auto min_y_it = std::min_element(extrusion.junctions.begin(), extrusion.junctions.end() - 1,
+                                             [](const Athena::ExtrusionJunction &a, const Athena::ExtrusionJunction &b)
+                                             { return a.p.y() < b.p.y(); });
+
+            if (min_y_it != extrusion.junctions.begin() && min_y_it != extrusion.junctions.end() - 1)
+            {
+                // Rotate so min_y junction becomes first
+                // Note: For closed loops, last junction equals first, so we exclude it from rotation
+                std::rotate(extrusion.junctions.begin(), min_y_it, extrusion.junctions.end() - 1);
+                // Update the last junction to match the new first junction (maintain closure)
+                extrusion.junctions.back() = extrusion.junctions.front();
+            }
+        }
+
+        ExtrusionPaths paths;
+        // detect overhanging/bridging perimeters
+        if (params.config.overhangs && params.layer_id > params.object_config.raft_layers &&
+            !(params.object_config.support_material &&
+              params.object_config.support_material_contact_distance.value == stcgNoGap &&
+              !params.object_config.support_material_bridge_no_gap))
+        {
+            ClipperZUtils::ZPath extrusion_path;
+            extrusion_path.reserve(extrusion.size());
+            BoundingBox extrusion_path_bbox;
+            for (const Athena::ExtrusionJunction &ej : extrusion.junctions)
+            {
+                extrusion_path.emplace_back(ej.p.x(), ej.p.y(), ej.w);
+                extrusion_path_bbox.merge(Point{ej.p.x(), ej.p.y()});
+            }
+
+            ClipperZUtils::ZPaths lower_slices_paths;
+            lower_slices_paths.reserve(lower_slices_polygons_cache.size());
+            {
+                Points clipped;
+                extrusion_path_bbox.offset(SCALED_EPSILON);
+                for (const Polygon &poly : lower_slices_polygons_cache)
+                {
+                    clipped.clear();
+                    ClipperUtils::clip_clipper_polygon_with_subject_bbox(poly.points, extrusion_path_bbox, clipped);
+                    if (!clipped.empty())
+                    {
+                        lower_slices_paths.emplace_back();
+                        ClipperZUtils::ZPath &out = lower_slices_paths.back();
+                        out.reserve(clipped.size());
+                        for (const Point &pt : clipped)
+                            out.emplace_back(pt.x(), pt.y(), 0);
+                    }
+                }
+            }
+
+            // get non-overhang paths by intersecting this loop with the grown lower slices
+            Athena::extrusion_paths_append(
+                paths, clip_extrusion(extrusion_path, lower_slices_paths, Clipper2Lib::ClipType::Intersection),
+                role_normal, is_external ? params.ext_perimeter_flow : params.perimeter_flow, extrusion.inset_idx);
+
+            // get overhang paths by checking what parts of this loop fall
+            // outside the grown lower slices (thus where the distance between
+            // the loop centerline and original lower slices is >= half nozzle diameter
+            Athena::extrusion_paths_append(paths,
+                                           clip_extrusion(extrusion_path, lower_slices_paths,
+                                                          Clipper2Lib::ClipType::Difference),
+                                           role_overhang, params.overhang_flow, extrusion.inset_idx);
+
+            // Reapply the nearest point search for starting point.
+            // We allow polyline reversal because Clipper may have randomly reversed polylines during clipping.
+            // Athena sometimes creates extrusion with zero-length (just two same endpoints);
+            if (!paths.empty())
+            {
+                Point start_point = paths.front().first_point();
+                if (!extrusion.is_closed)
+                {
+                    // Especially for open extrusion, we need to select a starting point that is at the start
+                    // or the end of the extrusions to make one continuous line. Also, we prefer a non-overhang
+                    // starting point.
+                    struct PointInfo
+                    {
+                        size_t occurrence = 0;
+                        bool is_overhang = false;
+                    };
+                    ankerl::unordered_dense::map<Point, PointInfo, PointHash> point_occurrence;
+                    for (const ExtrusionPath &path : paths)
+                    {
+                        ++point_occurrence[path.polyline.first_point()].occurrence;
+                        ++point_occurrence[path.polyline.last_point()].occurrence;
+                        if (path.role().is_bridge())
+                        {
+                            point_occurrence[path.polyline.first_point()].is_overhang = true;
+                            point_occurrence[path.polyline.last_point()].is_overhang = true;
+                        }
+                    }
+
+                    // Prefer non-overhang point as a starting point.
+                    for (const std::pair<Point, PointInfo> &pt : point_occurrence)
+                        if (pt.second.occurrence == 1)
+                        {
+                            start_point = pt.first;
+                            if (!pt.second.is_overhang)
+                            {
+                                start_point = pt.first;
+                                break;
+                            }
+                        }
+                }
+
+                chain_and_reorder_extrusion_paths(paths, &start_point);
+            }
+        }
+        else
+        {
+            Athena::extrusion_paths_append(paths, extrusion, role_normal,
+                                           is_external ? params.ext_perimeter_flow : params.perimeter_flow,
+                                           extrusion.inset_idx);
+        }
+
+        // When top_surface_flow_reduction is enabled, split paths at visibility boundaries and
+        // apply reduced flow to visible segments. Uses interval-based sampling per config setting.
+        if (is_external && params.config.top_surface_flow_reduction.value > 0 && params.layer != nullptr)
+        {
+            const double flow_multiplier = 1.0 - (params.config.top_surface_flow_reduction.value / 100.0);
+            const coord_t check_diameter = params.ext_perimeter_flow.scaled_width() * 4;
+
+            // Get visibility detection interval from config
+            double sample_interval;
+            switch (params.config.top_surface_visibility_detection.value)
+            {
+            case TopSurfaceVisibilityDetection::tsvdPrecise:
+                sample_interval = 1.0;
+                break;
+            case TopSurfaceVisibilityDetection::tsvdStandard:
+                sample_interval = 2.0;
+                break;
+            case TopSurfaceVisibilityDetection::tsvdRelaxed:
+                sample_interval = 4.0;
+                break;
+            case TopSurfaceVisibilityDetection::tsvdMinimal:
+                sample_interval = 8.0;
+                break;
+            default:
+                sample_interval = 2.0;
+                break;
+            }
+
+            // Lambda to check point visibility
+            auto point_is_visible = [&](const Point &pt) -> bool
+            {
+                return params.layer->is_visible_from_top_or_bottom(pt, check_diameter, true, false);
+            };
+
+            // Lambda to find exact visibility boundary using binary search
+            auto find_visibility_boundary = [&](const Point &p1, const Point &p2) -> Point
+            {
+                Point visible_pt = p1;
+                Point hidden_pt = p2;
+                if (point_is_visible(p1))
+                    std::swap(visible_pt, hidden_pt);
+
+                // Binary search for boundary
+                for (int i = 0; i < 14; ++i)
+                {
+                    Point mid((visible_pt.x() + hidden_pt.x()) / 2, (visible_pt.y() + hidden_pt.y()) / 2);
+                    if (point_is_visible(mid))
+                        hidden_pt = mid;
+                    else
+                        visible_pt = mid;
+                }
+                return Point((visible_pt.x() + hidden_pt.x()) / 2, (visible_pt.y() + hidden_pt.y()) / 2);
+            };
+
+            ExtrusionPaths new_paths;
+            for (ExtrusionPath &path : paths)
+            {
+                if (path.polyline.size() < 2)
+                {
+                    new_paths.push_back(std::move(path));
+                    continue;
+                }
+
+                // Sample points along the path at the configured interval
+                std::vector<std::pair<double, bool>> samples; // (position_t, is_visible)
+                samples.push_back({0.0, point_is_visible(path.polyline.front())});
+
+                const double path_length = path.polyline.length();
+                double t = sample_interval;
+                while (t < path_length)
+                {
+                    Point pt = path.polyline.point_at(t);
+                    samples.push_back({t, point_is_visible(pt)});
+                    t += sample_interval;
+                }
+
+                if (samples.size() == 1 || samples.back().first < path_length - EPSILON)
+                    samples.push_back({path_length, point_is_visible(path.polyline.back())});
+
+                // Identify visibility transitions
+                std::vector<std::pair<double, bool>> transitions; // (position_t, new_visibility_state)
+                transitions.push_back({0.0, samples.front().second});
+
+                for (size_t i = 1; i < samples.size(); ++i)
+                {
+                    if (samples[i].second != samples[i - 1].second)
+                    {
+                        // Find exact boundary between samples[i-1] and samples[i]
+                        Point p1 = path.polyline.point_at(samples[i - 1].first);
+                        Point p2 = path.polyline.point_at(samples[i].first);
+                        Point boundary_pt = find_visibility_boundary(p1, p2);
+                        double boundary_t = path.polyline.closest_point_t(boundary_pt);
+                        transitions.push_back({boundary_t, samples[i].second});
+                    }
+                }
+
+                // Split path into segments based on transitions
+                for (size_t i = 0; i < transitions.size(); ++i)
+                {
+                    double t_start = transitions[i].first;
+                    double t_end = (i + 1 < transitions.size()) ? transitions[i + 1].first : path_length;
+                    bool is_visible = transitions[i].second;
+
+                    if (t_end - t_start < EPSILON)
+                        continue;
+
+                    Points segment_points;
+                    segment_points.push_back(path.polyline.point_at(t_start));
+                    for (size_t pt_idx = 0; pt_idx < path.polyline.size(); ++pt_idx)
+                    {
+                        double pt_t = path.polyline.length_at(pt_idx);
+                        if (pt_t > t_start + EPSILON && pt_t < t_end - EPSILON)
+                            segment_points.push_back(path.polyline.points[pt_idx]);
+                    }
+                    segment_points.push_back(path.polyline.point_at(t_end));
+
+                    if (segment_points.size() >= 2)
+                    {
+                        ExtrusionPath segment_path = path;
+                        segment_path.polyline.points = segment_points;
+                        if (is_visible)
+                            segment_path.mm3_per_mm *= flow_multiplier;
+                        new_paths.push_back(std::move(segment_path));
+                    }
+                }
+            }
+
+            paths = std::move(new_paths);
+        }
+
+        // Append paths to collection
+        if (!paths.empty())
+        {
+            if (extrusion.is_closed && is_external && !paths.front().role().is_bridge())
+            {
+                ExtrusionLoop extrusion_loop;
+                extrusion_loop.paths = std::move(paths);
+                extrusion_coll.append(ExtrusionLoop(std::move(extrusion_loop)));
+            }
+            else
+            {
+                ExtrusionMultiPath multi_path;
+                multi_path.paths = std::move(paths);
                 extrusion_coll.append(ExtrusionMultiPath(std::move(multi_path)));
             }
         }
@@ -2552,6 +2853,17 @@ std::vector<Polygons> PerimeterGenerator::generate_lower_polygons_series(float w
         lower_polygons_series.emplace_back(offset(*this->lower_slices, float(scale_(offset_series[i]))));
     }
     return lower_polygons_series;
+}
+
+// preFlight: Athena wall generator (precise fixed-width walls)
+// TODO: Full implementation - currently falls back to Classic for compatibility
+void PerimeterGenerator::process_athena()
+{
+    // Athena provides precise, dimensionally-accurate perimeters with exact user-specified widths
+    // Full implementation requires integration of Athena::WallToolPaths and helper utilities
+    // For now, fall back to classic perimeter generation to maintain functionality
+    BOOST_LOG_TRIVIAL(warning) << "Athena wall generator selected but not fully implemented yet - using Classic";
+    process_classic();
 }
 
 }

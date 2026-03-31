@@ -6636,6 +6636,60 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
                                      ironing_fan_speed >= 0 && path.role() == erIroning);
     };
 
+    // preFlight: Manual fan control - set per-feature fan speeds when enabled
+    auto apply_manual_fan_speed = [this, &gcode, &path]() {
+        if (!m_enable_cooling_markers || !EXTRUDER_CONFIG(enable_manual_fan_speeds))
+            return;
+
+        int manual_fan_speed = 0;
+        switch (path.role()) {
+            case erPerimeter:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_perimeter);
+                break;
+            case erExternalPerimeter:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_external_perimeter);
+                break;
+            case erOverhangPerimeter:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_overhang_perimeter);
+                break;
+            case erInternalInfill:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_internal_infill);
+                break;
+            case erSolidInfill:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_solid_infill);
+                break;
+            case erTopSolidInfill:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_top_solid_infill);
+                break;
+            case erIroning:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_ironing);
+                break;
+            case erBridgeInfill:
+                manual_fan_speed = EXTRUDER_CONFIG(bridge_fan_speed);
+                break;
+            case erGapFill:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_gap_fill);
+                break;
+            case erSkirt:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_skirt);
+                break;
+            case erSupportMaterial:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_support_material);
+                break;
+            case erSupportMaterialInterface:
+                manual_fan_speed = EXTRUDER_CONFIG(manual_fan_speed_support_interface);
+                break;
+            default:
+                return; // No manual fan speed for this role
+        }
+
+        // Emit marker only if fan speed changed
+        if (!m_current_manual_fan_speed.has_value() || m_current_manual_fan_speed.value() != manual_fan_speed) {
+            m_current_manual_fan_speed = manual_fan_speed;
+            gcode += ";_SET_FAN_SPEED" + std::to_string(manual_fan_speed) + "\n";
+        }
+    };
+
     if (!variable_speed) {
         // F is mm per minute.
         if( (std::abs(writer().get_current_speed() - F) > EPSILON) || (std::abs(_mm3_per_mm - m_last_mm3_mm) > EPSILON) ){
@@ -6701,6 +6755,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
                 }
 
                 apply_role_based_fan_speed();
+                apply_manual_fan_speed(); // preFlight: Apply manual per-feature fan speeds
             }
             // BBS: use G1 if not enable arc fitting or has no arc fitting result or in spiral_mode mode or we are doing sloped extrusion
             // Attention: G2 and G3 is not supported in spiral_mode mode
@@ -6841,6 +6896,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
                 }
 
                 apply_role_based_fan_speed();
+                apply_manual_fan_speed(); // preFlight: Apply manual per-feature fan speeds
             }
 
             const double line_length = (p - prev).norm();

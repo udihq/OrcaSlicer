@@ -481,9 +481,19 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PrinterStructure)
 
 static t_config_enum_values s_keys_map_PerimeterGeneratorType{
     { "classic", int(PerimeterGeneratorType::Classic) },
-    { "arachne", int(PerimeterGeneratorType::Arachne) }
+    { "arachne", int(PerimeterGeneratorType::Arachne) },
+    { "athena", int(PerimeterGeneratorType::Athena) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PerimeterGeneratorType)
+
+// preFlight: Interlocking flow detection
+static t_config_enum_values s_keys_map_InterlockFlowDetection{
+    { "precise", int(ifdPrecise) },
+    { "standard", int(ifdStandard) },
+    { "relaxed", int(ifdRelaxed) },
+    { "minimal", int(ifdMinimal) }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(InterlockFlowDetection)
 
 static const t_config_enum_values s_keys_map_ZHopType = {
     { "Auto Lift",          zhtAuto },
@@ -1159,6 +1169,136 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.emplace_back("75%");
     def->enum_labels.emplace_back("95%");
     def->set_default_value(new ConfigOptionEnumsGeneric{ (int)Overhang_threshold_bridge });
+
+    // preFlight: Manual fan control settings
+    def = this->add("enable_manual_fan_speeds", coBools);
+    def->label = L("Enable manual fan speeds");
+    def->tooltip = L("When enabled, use the manual fan speed values below for each feature type. "
+                     "This disables dynamic overhang fan speeds to prevent conflicting fan commands. "
+                     "Useful for fine-tuned control over fan behavior per feature.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBools{false});
+
+    def = this->add("manual_fan_speed_overhang_perimeter", coInts);
+    def->label = L("Overhang perimeters");
+    def->tooltip = L("Fan speed for overhang perimeters. Used in both auto cooling and manual fan modes. "
+                     "In auto mode, this overrides the bridge fan speed specifically for overhang perimeters. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{100});
+
+    def = this->add("manual_fan_speed_interlocking_perimeter", coInts);
+    def->label = L("Interlocking perimeters");
+    def->tooltip = L("Fan speed for interlocking perimeters when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_external_perimeter", coInts);
+    def->label = L("External perimeters");
+    def->tooltip = L("Fan speed for external perimeters when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_perimeter", coInts);
+    def->label = L("Internal perimeters");
+    def->tooltip = L("Fan speed for internal perimeters when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_top_solid_infill", coInts);
+    def->label = L("Top solid infill");
+    def->tooltip = L("Fan speed for top solid infill when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_solid_infill", coInts);
+    def->label = L("Solid infill");
+    def->tooltip = L("Fan speed for solid infill (not top) when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_internal_infill", coInts);
+    def->label = L("Sparse infill");
+    def->tooltip = L("Fan speed for sparse internal infill when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_ironing", coInts);
+    def->label = L("Ironing");
+    def->tooltip = L("Fan speed for ironing passes when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_gap_fill", coInts);
+    def->label = L("Gap fill");
+    def->tooltip = L("Fan speed for gap fill extrusions when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_skirt", coInts);
+    def->label = L("Skirt/Brim");
+    def->tooltip = L("Fan speed for skirt and brim when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_support_material", coInts);
+    def->label = L("Support material");
+    def->tooltip = L("Fan speed for support material when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
+
+    def = this->add("manual_fan_speed_support_interface", coInts);
+    def->label = L("Support interface");
+    def->tooltip = L("Fan speed for support interface when auto cooling is disabled. "
+                     "Set to 0 to use no fan for this feature type.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts{0});
 
     def = this->add("bridge_angle", coFloat);
     def->label = L("External bridge infill direction");
@@ -3859,6 +3999,35 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionPercent(25));
 
+    // preFlight: Advanced overlap controls
+    def = this->add("perimeter_perimeter_overlap", coFloatOrPercent);
+    def->label = L("Perimeter/perimeter overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Controls overlap between all internal perimeters. "
+                     "Extruded beads have rounded edges that must overlap for proper bonding. "
+                     "The default 10.73% is derived from the geometric constant (1 - π/4) / 2, "
+                     "which accounts for the semicircular bead cross-section. The overlap amount "
+                     "is calculated from layer height: at 10.73%, beads bond optimally; at 100%, "
+                     "beads completely overlap. Requires at least 3 perimeters. Maximum 80%.");
+    def->sidetext = L("mm or %");
+    def->ratio_over = "layer_height";
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloatOrPercent(10.73, true));
+
+    def = this->add("bridge_infill_overlap", coFloatOrPercent);
+    def->label = L("Bridge infill overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Controls overlap between adjacent bridge infill lines. "
+                     "At 0% (default), lines touch edge-to-edge. Positive values create overlap "
+                     "(lines print closer, may help lines support each other). Negative values "
+                     "create gaps between lines. "
+                     "The overlap amount is calculated from layer height.");
+    def->sidetext = L("mm or %");
+    def->ratio_over = "layer_height";
+    def->min = -100;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloatOrPercent(0, true));
+
     def = this->add("sparse_infill_speed", coFloat);
     def->label = L("Sparse infill");
     def->category = L("Speed");
@@ -4615,6 +4784,90 @@ void PrintConfigDef::init_fff_params()
                      "Using lightning infill together with this option is not recommended as there is limited infill to anchor the extra perimeters to.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
+
+    // preFlight: Interlocking perimeters
+    def = this->add("interlock_perimeters_enabled", coBool);
+    def->label = L("Enable interlocking perimeters");
+    def->category = L("Strength");
+    def->tooltip = L("Creates interlocking layers by varying spacing of innermost perimeters across layers. "
+                     "When combined with over-extrusion, material compresses into gaps for enhanced layer bonding. "
+                     "Expected strength increase: 10-15% with no additional material or time cost.\n\n"
+                     "⚠ Experimental feature - uses spacing variation (not height variation) for patent defensibility.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("interlock_perimeter_count", coInt);
+    def->label = L("Interlocking perimeter count");
+    def->category = L("Strength");
+    def->tooltip = L("Number of interlocking perimeter shells at sparse infill boundaries. "
+                     "These shells alternate overlap patterns between layers - each layer creates gaps "
+                     "that the next layer fills, forming mechanical interlocking.");
+    def->sidetext = L("perimeters");
+    def->min = 3;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(5));
+
+    def = this->add("interlock_perimeter_strength", coPercent);
+    def->label = L("Interlocking strength");
+    def->category = L("Strength");
+    def->tooltip = L("Controls interlocking extrusion amount. At 100%, inner interlocking shells "
+                     "extrude at 200% flow to compress material into gaps from the layer below.\n\n"
+                     "100% = base interlocking (200% flow on inner shells)\n"
+                     "150% = aggressive (may cause artifacts)\n\n"
+                     "Note: Bead-to-bead bonding is controlled separately by 'Interlocking overlap'.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 200;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(100));
+
+    def = this->add("interlock_perimeter_overlap", coFloatOrPercent);
+    def->label = L("Interlocking overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Adjusts flow for interlocking perimeters to control bead-to-bead bonding. "
+                     "Interlocking shells are spaced apart by design; this setting fattens or "
+                     "thins beads to fine-tune layer adhesion.\n\n"
+                     "The optimal value is printer-dependent. Start at 0% and adjust as needed.\n\n"
+                     "Negative values = thinner beads, small gaps (less material)\n"
+                     "0% = no adjustment (default)\n"
+                     "Positive values = fatter beads, more overlap (stronger bonding)");
+    def->sidetext = L("mm or %");
+    def->ratio_over = "layer_height";
+    def->min = -50;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloatOrPercent(0, true));
+
+    def = this->add("interlocking_perimeter_extruder", coInt);
+    def->label = L("Interlocking perimeter extruder");
+    def->category = L("Extruders");
+    def->tooltip = L("The extruder to use when printing interlocking perimeters. First extruder is 1.");
+    def->min = 1;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(1));
+
+    def = this->add("interlock_flow_detection", coEnum);
+    def->label = L("Interlocking flow detection");
+    def->category = L("Strength");
+    def->tooltip = L("Controls how precisely interlocking flow boundaries are detected. "
+                     "When interlocking perimeters cross from over-interlocking to non-interlocking regions, "
+                     "the flow rate must change. This setting determines how frequently boundaries are checked.\n\n"
+                     "• Precise (1mm): Highest accuracy, checks every 1mm. Best quality at boundaries.\n"
+                     "• Standard (2mm): Good balance of accuracy and speed.\n"
+                     "• Relaxed (4mm): Faster slicing, minor boundary imprecision.\n"
+                     "• Minimal (8mm): Fastest slicing, noticeable imprecision at boundaries.\n\n"
+                     "Lower values increase slicing time but improve flow accuracy at zone boundaries.");
+    def->enum_keys_map = &ConfigOptionEnum<InterlockFlowDetection>::get_enum_values();
+    def->enum_values.push_back("precise");
+    def->enum_values.push_back("standard");
+    def->enum_values.push_back("relaxed");
+    def->enum_values.push_back("minimal");
+    def->enum_labels.push_back(L("Precise (1mm)"));
+    def->enum_labels.push_back(L("Standard (2mm)"));
+    def->enum_labels.push_back(L("Relaxed (4mm)"));
+    def->enum_labels.push_back(L("Minimal (8mm)"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<InterlockFlowDetection>(ifdStandard));
     
     def = this->add("post_process", coStrings);
     def->label = L("Post-processing Scripts");
@@ -6639,14 +6892,36 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip = L("Classic wall generator produces walls with constant extrusion width and for "
         "very thin areas is used gap-fill. "
-        "Arachne engine produces walls with variable extrusion width.");
+        "Arachne engine produces walls with variable extrusion width. "
+        "Athena produces precise perimeters with exact user-specified widths for maximum dimensional accuracy.");
     def->enum_keys_map = &ConfigOptionEnum<PerimeterGeneratorType>::get_enum_values();
     def->enum_values.push_back("classic");
     def->enum_values.push_back("arachne");
+    def->enum_values.push_back("athena");
     def->enum_labels.push_back(L("Classic"));
     def->enum_labels.push_back(L("Arachne"));
+    def->enum_labels.push_back(L("Athena"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<PerimeterGeneratorType>(PerimeterGeneratorType::Arachne));
+
+    def = this->add("perimeter_compression", coEnum);
+    def->label = L("Perimeter compression");
+    def->category = L("Quality");
+    def->tooltip = L("Controls how aggressively perimeters compress in tight areas where loops converge. "
+                     "This setting only applies to the Athena perimeter generator.\n\n"
+                     "• Disabled: No compression (100% of bead width minimum)\n"
+                     "• Moderate: 66% of bead width minimum\n"
+                     "• Aggressive: 33% of bead width minimum\n\n"
+                     "The floor is always 33% of nozzle diameter to ensure printability.");
+    def->enum_keys_map = &ConfigOptionEnum<PerimeterCompression>::get_enum_values();
+    def->enum_values.push_back("off");
+    def->enum_values.push_back("moderate");
+    def->enum_values.push_back("aggressive");
+    def->enum_labels.push_back(L("Disabled"));
+    def->enum_labels.push_back(L("Moderate"));
+    def->enum_labels.push_back(L("Aggressive"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<PerimeterCompression>(PerimeterCompression::pcModerate));
 
     def = this->add("wall_transition_length", coPercent);
     def->label = L("Wall transition length");

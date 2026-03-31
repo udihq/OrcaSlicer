@@ -285,7 +285,27 @@ enum class PerimeterGeneratorType
     Classic,
     // Perimeter generator with variable extrusion width based on the paper
     // "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling" ported from Cura.
-    Arachne
+    Arachne,
+    // Athena produces precise perimeters with exact user-specified widths
+    // for maximum dimensional accuracy (from preFlight)
+    Athena
+};
+
+// preFlight: Interlocking flow detection precision
+enum InterlockFlowDetection
+{
+    ifdPrecise,  // 1mm sampling - highest accuracy, more CPU
+    ifdStandard, // 2mm sampling - good balance
+    ifdRelaxed,  // 4mm sampling - faster, less precise at boundaries
+    ifdMinimal,  // 8mm sampling - fastest, least precise
+};
+
+// preFlight: Perimeter compression for Athena wall generator
+enum PerimeterCompression
+{
+    pcOff,        // 100% of bead width (no compression)
+    pcModerate,   // 66% of bead width (moderate compression)
+    pcAggressive, // 33% of bead width (aggressive compression)
 };
 
 // BBS
@@ -987,6 +1007,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     // ((ConfigOptionBool,               adaptive_layer_height))
     ((ConfigOptionFloat,              support_bottom_interface_spacing))
     ((ConfigOptionEnum<PerimeterGeneratorType>, wall_generator))
+    ((ConfigOptionEnum<PerimeterCompression>, perimeter_compression))
     ((ConfigOptionPercent,            wall_transition_length))
     ((ConfigOptionPercent,            wall_transition_filter_deviation))
     ((ConfigOptionFloat,              wall_transition_angle))
@@ -1195,6 +1216,33 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatOrPercent,       scarf_joint_speed))
     ((ConfigOptionFloat,                scarf_joint_flow_ratio))
     ((ConfigOptionPercent,              scarf_overhang_threshold))
+
+    // preFlight: Athena wall generator and advanced overlap controls
+    ((ConfigOptionFloatOrPercent,       perimeter_perimeter_overlap))
+    ((ConfigOptionFloatOrPercent,       bridge_infill_overlap))
+
+    // preFlight: Interlocking perimeters (different from interlocking beams)
+    ((ConfigOptionBool,                 interlock_perimeters_enabled))
+    ((ConfigOptionInt,                  interlock_perimeter_count))
+    ((ConfigOptionPercent,              interlock_perimeter_strength))
+    ((ConfigOptionFloatOrPercent,       interlock_perimeter_overlap))
+
+    // preFlight: Manual fan control per feature
+    ((ConfigOptionInts,                 bridge_fan_speed))
+    ((ConfigOptionBools,                enable_manual_fan_speeds))
+    ((ConfigOptionInts,                 manual_fan_speed_external_perimeter))
+    ((ConfigOptionInts,                 manual_fan_speed_gap_fill))
+    ((ConfigOptionInts,                 manual_fan_speed_internal_infill))
+    ((ConfigOptionInts,                 manual_fan_speed_interlocking_perimeter))
+    ((ConfigOptionInts,                 manual_fan_speed_ironing))
+    ((ConfigOptionInts,                 manual_fan_speed_overhang_perimeter))
+    ((ConfigOptionInts,                 manual_fan_speed_perimeter))
+    ((ConfigOptionInts,                 manual_fan_speed_skirt))
+    ((ConfigOptionInts,                 manual_fan_speed_solid_infill))
+    ((ConfigOptionInts,                 manual_fan_speed_support_interface))
+    ((ConfigOptionInts,                 manual_fan_speed_support_material))
+    ((ConfigOptionInts,                 manual_fan_speed_top_solid_infill))
+    ((ConfigOptionBools,                enable_dynamic_fan_speeds))
 )
 
 PRINT_CONFIG_CLASS_DEFINE(
